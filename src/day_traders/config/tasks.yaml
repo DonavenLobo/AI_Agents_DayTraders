@@ -1,0 +1,158 @@
+# Task 1: Fetch Market Data
+fetch_market_data:
+  description: >
+    Retrieve recent historical market data (OHLCV bars) for the specified stock symbols: {list_of_symbols}.
+    Process Steps:
+    1. Use the 'Get Historical Stock Bars' tool.
+    2. Specify the symbols: {list_of_symbols}.
+    3. Use the required timeframe: {data_timeframe} (e.g., '5Min', '15Min').
+    4. Fetch the last {data_limit} bars (e.g., 100 bars).
+    Purpose: This data forms the primary input for technical analysis in the trading strategy.
+  expected_output: >
+    A string summarizing the fetched OHLCV bar data for each symbol, including timestamps,
+    open, high, low, close, and volume. Ensure the output clearly indicates the symbols
+    and timeframe covered. If data is unavailable for a symbol, clearly state that.
+    Example snippet: "Fetched 100 bars for AAPL (5Min):\n  T=..., O=..., H=..., L=..., C=..., V=...\n  T=..., O=..., H=..., L=..., C=..., V=...\nFetched 100 bars for TSLA (5Min):..."
+  agent: market_data_analyst
+  # No context needed for the first task
+
+# Task 2: Fetch News and Sentiment
+fetch_news_sentiment:
+  description: >
+    Scan for significant financial news, market events, earnings announcements, and notable sentiment shifts
+    related to the specified stock symbols ({list_of_symbols}) or their industry that have occurred within
+    the last {news_time_window} (e.g., '3 hours', '1 day').
+    Process Steps:
+    1. Utilize web search tools (e.g., SerperDevTool).
+    2. Formulate targeted search queries for each symbol and relevant market keywords.
+    3. Filter results for relevance and potential market impact within the specified time window.
+    Purpose: To gather qualitative context that might influence trading decisions or override technical signals.
+  expected_output: >
+    A concise markdown summary of the most relevant news headlines and sentiment points found.
+    Include source snippets or links where possible. If no significant news is found, state "No significant news found for {list_of_symbols} in the last {news_time_window}."
+    Structure:
+    - Symbol 1: [Summary of news/sentiment points]
+    - Symbol 2: [Summary of news/sentiment points]
+    - Overall Market Sentiment: [Brief summary if applicable]
+  agent: news_sentiment_analyst
+  # No context needed for this task (runs in parallel or sequence depending on crew setup)
+
+# Task 3: Analyze Market and Propose Trade (CHANGED)
+analyze_market_and_propose_trade: # Renamed from analyze_trading_strategy
+  description: >
+    # Description changed to reflect dynamic analysis and proposal generation
+    Analyze the provided market data (from Task: fetch_market_data) and news/sentiment summary
+    (from Task: fetch_news_sentiment). Apply your market analysis expertise to identify potential
+    short-term trade opportunities for {list_of_symbols}.
+    Process Steps:
+    1. Synthesize technical patterns (e.g., support/resistance, trends, volatility) from the bar data.
+    2. Integrate the news/sentiment context – does it support or contradict potential technical setups?
+    3. Based on your analysis of current conditions, identify any high-probability trade setups.
+    4. For each identified setup, formulate a clear trade proposal.
+    Purpose: To leverage analytical expertise to generate well-reasoned trading ideas based on real-time inputs.
+  expected_output: >
+    # Output now requires justification
+    A structured string output detailing any identified trade proposal(s).
+    If a proposal is generated, include: 'symbol', 'side' (buy/sell), 'entry_price_zone' (e.g., market, specific level),
+    'initial_stop_loss_price', 'take_profit_price' (optional, if clear target exists), AND a brief 'rationale' (1-2 sentences justifying the trade based on your analysis).
+    Format for proposals: "Proposal: symbol=XXX, side=buy/sell, entry=PRICE/Market, stop=PRICE, target=PRICE/None. Rationale: [Your justification linking data/news to the setup]"
+    List multiple proposals on new lines.
+    If NO high-probability setup is identified based on your analysis, output ONLY the string: "No compelling trade proposals identified at this time."
+  agent: trading_strategy_analyst # Assigned to the redefined analyst
+  context:
+    - fetch_market_data
+    - fetch_news_sentiment
+
+# Task 4: Assess Trade Risk and Determine Parameters
+assess_trade_risk:
+  description: >
+    Evaluate the proposed trade signal(s) received from the 'Analyze Trading Strategy' task against the
+    defined risk management framework ({risk_rules_summary}).
+    Process Steps:
+    1. Verify the signal structure received from the previous task. If "No valid trade signals found", stop and report no action needed.
+    2. Use 'Get Alpaca Account Details' tool to fetch current equity and buying power.
+    3. Use 'Get Current Alpaca Positions' tool to check existing exposure and open position count.
+    4. For each proposed signal:
+        a. Check against max number of open positions rule.
+        b. Calculate required capital based on entry and stop-loss.
+        c. Calculate position size (quantity) based on max % risk per trade ({max_risk_per_trade_percent}%) of current equity and the stop-loss distance. Ensure quantity is positive.
+        d. Verify if calculated position value exceeds any max capital allocation per trade rules.
+        e. Verify if the trade would violate Pattern Day Trader (PDT) rules based on daytrade count from account details (if applicable).
+        f. Check if sufficient buying power exists for the calculated quantity.
+    5. If ALL checks pass, approve the trade and finalize parameters. If ANY check fails, reject the trade.
+    Purpose: To ensure any executed trade adheres strictly to capital preservation rules and account constraints.
+  expected_output: >
+    A structured string output for EACH evaluated signal.
+    If Approved: "Trade Approved: symbol=XXX, side=buy/sell, quantity=CALCULATED_QTY, order_type=market/limit, [limit_price=PRICE if applicable], stop_loss_price=PRICE, [take_profit_price=PRICE if applicable]"
+    (Note: order_type might be decided here based on rules, e.g., always market, or limit based on entry zone).
+    If Rejected: "Trade Rejected: symbol=XXX, side=buy/sell. Reason: [Specific reason, e.g., Insufficient buying power, Exceeds max position limit, Risk per trade too high, PDT rule violation]."
+    If the input context indicated no signals were found, output: "No signals to assess."
+  agent: risk_management_analyst
+  context: # Depends on the output of the strategy analysis
+    - analyze_trading_strategy
+
+# Task 5: Execute Trade Order
+execute_trade_order:
+  description: >
+    Execute the trade(s) precisely as specified in the approved parameters received from the
+    'Assess Trade Risk' task.
+    Process Steps:
+    1. Parse the input context for approved trade parameters. If none approved or input indicates rejection/no action, stop and report no orders placed.
+    2. For each approved trade:
+        a. Use the 'Submit Alpaca Trading Order' tool.
+        b. Carefully map the received parameters (symbol, side, quantity, order_type, limit_price, stop_loss_price, take_profit_price) to the tool's arguments. Ensure stop-loss/take-profit are submitted correctly (e.g., as bracket order legs if applicable).
+        c. Submit the order.
+    Purpose: To place the carefully vetted and risk-managed trade onto the market via the Alpaca API.
+  expected_output: >
+    A string confirming the outcome of each attempted order submission.
+    Include the Order ID and initial status returned by the API for successful submissions.
+    Example: "Order Submitted: ID=XYZ123, Symbol=AAPL, Qty=10, Side=buy, Type=market, Status=accepted. Stop/Target legs submitted if applicable."
+    If an error occurred during submission: "Order Submission Error for Symbol XXX: [API Error Message]"
+    If no approved trades were received in the context: "No approved orders to execute."
+  agent: order_execution_specialist
+  context: # Depends on the output of the risk assessment
+    - assess_trade_risk
+
+# Task 6: Monitor Order Status (Optional but recommended for confirmation)
+monitor_order_status:
+  description: >
+    Check the execution status of the order(s) submitted in the 'Execute Trade Order' task using their Order IDs.
+    Process Steps:
+    1. Extract the Order ID(s) from the context provided by the previous task. If no orders were submitted, stop and report nothing to monitor.
+    2. For each Order ID:
+        a. Use the 'Get Alpaca Order Status by ID' tool.
+        b. Retrieve the current status (e.g., 'filled', 'partially_filled', 'new', 'canceled', 'rejected').
+    Purpose: To confirm if the submitted orders have been executed by the market and update the system's state.
+  expected_output: >
+    A string summarizing the status of each monitored Order ID.
+    Example: "Order Status Update: ID=XYZ123 (AAPL buy 10): filled @ $AVG_PRICE. ID=ABC456 (TSLA sell 5): new"
+    If an error occurred checking status: "Error checking status for Order ID XXX: [Error Message]"
+    If no Order IDs were provided: "No orders were submitted in the previous step to monitor."
+  agent: order_execution_specialist
+  context: # Depends on the output of the order execution
+    - execute_trade_order
+
+
+review_performance_and_adjust:
+  description: >
+    Review the overall trading performance for the day based on the provided summary
+    ({current_performance_summary}) and potentially real-time daily P/L fetched using the
+    'Get Alpaca Account Daily Performance' tool.
+    Process Steps:
+    1. Assess current performance against predefined thresholds (e.g., daily drawdown > 2%, daily profit target > 3%).
+    2. If performance is significantly poor (e.g., exceeds drawdown limit):
+        a. Identify a more conservative predefined strategy (using knowledge or 'Get Available Strategies' tool if built).
+        b. Decide whether to switch. If yes, use the 'Set Active Strategy' tool to change the strategy for the *next* cycle.
+    3. If performance is exceptional (e.g., exceeds profit target):
+        a. Consider switching to a capital preservation mode or a more conservative strategy, or reducing risk per trade for the rest of the day.
+        b. Decide action and use 'Set Active Strategy' if required.
+    4. If performance is within acceptable bounds, recommend continuing with the current strategy ('{trading_strategy_name}').
+    Purpose: To provide adaptive oversight, adjusting the operational strategy based on real-time results to maximize gains or minimize losses.
+  expected_output: >
+    A summary of the performance review and the decision made regarding strategy adjustment.
+    Example Outputs:
+    - "Performance within bounds. Continuing with strategy '{trading_strategy_name}'."
+    - "Performance threshold breached (Drawdown exceeded). Switched active strategy to 'Strategy_Conservative_V2' for next cycle."
+    - "Profit target reached. Recommend reducing risk or switching to 'Strategy_Conservative_V1'. Decision: Switched active strategy to 'Strategy_Conservative_V1'."
+    - "Error fetching performance data. No adjustments made."
+  agent: crew_manager # This task is primarily for the manager

@@ -1,0 +1,23 @@
+[project]
+name = "day_traders"
+version = "0.1.0"
+description = "day-traders using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "crewai[tools]>=0.105.0,<1.0.0"
+]
+
+[project.scripts]
+day_traders = "day_traders.main:run"
+run_crew = "day_traders.main:run"
+train = "day_traders.main:train"
+replay = "day_traders.main:replay"
+test = "day_traders.main:test"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"
