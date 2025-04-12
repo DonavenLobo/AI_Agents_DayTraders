@@ -38,7 +38,7 @@ fetch_news_sentiment:
   # No context needed for this task (runs in parallel or sequence depending on crew setup)
 
 # Task 3: Analyze Market and Propose Trade (CHANGED)
-analyze_market_and_propose_trade: # Renamed from analyze_trading_strategy
+analyze_market_and_propose_trade:
   description: >
     # Description changed to reflect dynamic analysis and proposal generation
     Analyze the provided market data (from Task: fetch_market_data) and news/sentiment summary
@@ -66,7 +66,7 @@ analyze_market_and_propose_trade: # Renamed from analyze_trading_strategy
 # Task 4: Assess Trade Risk and Determine Parameters
 assess_trade_risk:
   description: >
-    Evaluate the proposed trade signal(s) received from the 'Analyze Trading Strategy' task against the
+    Evaluate the proposed trade signal(s) received from the 'Analyze Market and Propose Trade' task against the
     defined risk management framework ({risk_rules_summary}).
     Process Steps:
     1. Verify the signal structure received from the previous task. If "No valid trade signals found", stop and report no action needed.
@@ -89,7 +89,7 @@ assess_trade_risk:
     If the input context indicated no signals were found, output: "No signals to assess."
   agent: risk_management_analyst
   context: # Depends on the output of the strategy analysis
-    - analyze_trading_strategy
+    - analyze_market_and_propose_trade
 
 # Task 5: Execute Trade Order
 execute_trade_order:
@@ -133,26 +133,28 @@ monitor_order_status:
     - execute_trade_order
 
 
-review_performance_and_adjust:
+# Task 7: Performance Review and Guidance (CHANGED - Manager Role)
+review_performance_and_provide_guidance: # Renamed from review_performance_and_adjust
   description: >
-    Review the overall trading performance for the day based on the provided summary
-    ({current_performance_summary}) and potentially real-time daily P/L fetched using the
-    'Get Alpaca Account Daily Performance' tool.
+    # Focus on review and feedback, not switching predefined strategies
+    As the Crew Manager, review the overall trading performance based on the provided summary ({current_performance_summary})
+    and potentially real-time daily P/L fetched using the 'Get Alpaca Account Daily Performance' tool.
+    Assess the results of the latest trade cycle based on the 'Monitor Order Status' context.
     Process Steps:
-    1. Assess current performance against predefined thresholds (e.g., daily drawdown > 2%, daily profit target > 3%).
-    2. If performance is significantly poor (e.g., exceeds drawdown limit):
-        a. Identify a more conservative predefined strategy (using knowledge or 'Get Available Strategies' tool if built).
-        b. Decide whether to switch. If yes, use the 'Set Active Strategy' tool to change the strategy for the *next* cycle.
-    3. If performance is exceptional (e.g., exceeds profit target):
-        a. Consider switching to a capital preservation mode or a more conservative strategy, or reducing risk per trade for the rest of the day.
-        b. Decide action and use 'Set Active Strategy' if required.
-    4. If performance is within acceptable bounds, recommend continuing with the current strategy ('{trading_strategy_name}').
-    Purpose: To provide adaptive oversight, adjusting the operational strategy based on real-time results to maximize gains or minimize losses.
+    1. Synthesize current performance data (cumulative, daily, recent trades).
+    2. Evaluate if recent performance (e.g., last few trades, daily P/L trend) warrants feedback or guidance.
+    3. Consider the Strategy Analyst's rationales for recent proposals (if available in context).
+    4. Formulate concise feedback or high-level guidance for the 'Adaptive Market Analyst & Trade Proposer' for the *next* cycle. This is NOT a command, but coaching input.
+    Examples of Guidance: "Performance is tracking well, maintain current analytical approach.", "Recent short setups failed, analyze why and perhaps focus on long setups if conditions support.", "Rationale for trade XYZ seemed weak given the news, please ensure stronger confluence next time.", "Volatility seems high, prioritize setups with clearer risk definition."
+    Purpose: To provide adaptive oversight and coaching, guiding the team's dynamic strategy based on results and improving decision-making over time.
   expected_output: >
-    A summary of the performance review and the decision made regarding strategy adjustment.
+    # Output changed - Manager provides feedback/guidance string
+    A concise string summarizing the performance review and outlining any feedback or guidance provided to the Strategy Analyst for the next cycle.
     Example Outputs:
-    - "Performance within bounds. Continuing with strategy '{trading_strategy_name}'."
-    - "Performance threshold breached (Drawdown exceeded). Switched active strategy to 'Strategy_Conservative_V2' for next cycle."
-    - "Profit target reached. Recommend reducing risk or switching to 'Strategy_Conservative_V1'. Decision: Switched active strategy to 'Strategy_Conservative_V1'."
-    - "Error fetching performance data. No adjustments made."
-  agent: crew_manager # This task is primarily for the manager
+    - "Performance Review: Stable. Guidance: Continue applying current analytical framework."
+    - "Performance Review: Recent losses on AAPL trades. Guidance: Analyst, please review AAPL rationale; consider focusing on MSFT/TSLA or setups with stronger confirmation for the next hour."
+    - "Performance Review: Strong gains today. Guidance: Protect profits; perhaps consider slightly reduced risk sizing on new trades."
+    - "Performance Review: No significant trades or P/L change. Guidance: Continue monitoring for high-probability setups."
+  agent: crew_manager # Task for the manager
+  context:
+    - monitor_order_status # Result of the last cycle's tradesr
